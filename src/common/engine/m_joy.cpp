@@ -59,7 +59,13 @@ EXTERN_CVAR(Bool, joy_xinput)
 
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
 
-CUSTOM_CVARD(Bool, use_joystick, false, CVAR_ARCHIVE|CVAR_GLOBALCONFIG|CVAR_NOINITCALL, "enables input from the joystick if it is present") 
+#ifdef __SWITCH__
+#define DEFAULT_USE_JOYSTICK true
+#else
+#define DEFAULT_USE_JOYSTICK false
+#endif
+
+CUSTOM_CVARD(Bool, use_joystick, DEFAULT_USE_JOYSTICK, CVAR_ARCHIVE|CVAR_GLOBALCONFIG|CVAR_NOINITCALL, "enables input from the joystick if it is present") 
 {
 #ifdef _WIN32
 	joy_ps2raw->Callback();

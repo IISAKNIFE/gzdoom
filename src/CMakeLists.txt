@@ -90,6 +90,11 @@ else()
 		option( NO_GTK "Disable GTK+ dialogs (Not applicable to Windows)" )
 		option( DYN_GTK "Load GTK+ at runtime instead of compile time" ON )
 
+		if( NINTENDO_SWITCH )
+			set( NO_GTK ON )
+			set( DYN_GTK OFF )
+		endif()
+
 		# Use GTK+ for the IWAD picker, if available.
 		if( NOT NO_GTK )
 			pkg_check_modules( GTK3 gtk+-3.0 )
@@ -132,6 +137,15 @@ else()
 	# Non-Windows version also needs SDL except native OS X backend
 	if( NOT APPLE OR NOT OSX_COCOA_BACKEND )
 		find_package( SDL2 REQUIRED )
+		if ( NINTENDO_SWITCH )
+			# I don't know what the fuck happened to the dka64 cmake environment (or gzdoom's FindSDL2 script),
+			# but the above line will no longer define SDL2_INCLUDE_DIR or SDL2_LIBRARY
+			# and it happened to a couple other libraries as well; so we define them by hand
+			if( NOT DEFINED SDL2_LIBRARY AND NOT DEFINED SDL2_INCLUDE_DIR )
+				set( SDL2_INCLUDE_DIR "$ENV{PORTLIBS_PREFIX}/include/SDL2" )
+				set( SDL2_LIBRARY "$ENV{PORTLIBS_PREFIX}/lib/libSDL2.a" )
+			endif()
+		endif()
 		include_directories( "${SDL2_INCLUDE_DIR}" )
 		set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} "${SDL2_LIBRARY}" )
 	endif()
@@ -142,6 +156,14 @@ if( NOT NO_OPENAL )
 	if ( NOT DYN_OPENAL )	# DYN_OPENAL uses local copies of the headers.
 		find_package( OpenAL )
 		mark_as_advanced(CLEAR OPENAL_INCLUDE_DIR)
+		if( NINTENDO_SWITCH )
+			# counteract shit detection
+			if( NOT DEFINED OPENAL_LIBRARY OR NOT DEFINED OPENAL_INCLUDE_DIR )
+				message( "-- Couldn't find OpenAL, falling back to default switch-openal location" )
+				set( OPENAL_INCLUDE_DIR "$ENV{PORTLIBS_PREFIX}/include/AL" )
+				set( OPENAL_LIBRARY "$ENV{PORTLIBS_PREFIX}/lib/libopenal.a" )
+			endif()
+		endif()
 		if( OPENAL_INCLUDE_DIR )
 			include_directories( ${OPENAL_INCLUDE_DIR} )
 			mark_as_advanced(CLEAR OPENAL_LIBRARY)
@@ -152,9 +174,11 @@ if( NOT NO_OPENAL )
 				endif()
 			else()
 				set( NO_OPENAL ON )
+				message( SEND_ERROR "OpenAL library not found!" )
 			endif()
 		else()
 			set( NO_OPENAL ON )
+			message( SEND_ERROR "OpenAL includes not found!" )
 		endif()
 	else()
 		add_definitions( -DDYN_OPENAL )
@@ -287,6 +311,11 @@ endif()
 
 # Check for functions that may or may not exist.
 
+CHECK_FUNCTION_EXISTS( strlwr STRLWR_EXISTS )
+if( NOT STRLWR_EXISTS )
+	add_definitions( -DNEED_STRLWR=1 )
+endif()
+
 require_stricmp()
 require_strnicmp()
 
@@ -318,9 +347,12 @@ add_custom_target( revision_check ALL
 
 # required libraries
 
-set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} "${ZLIB_LIBRARIES}" "${JPEG_LIBRARIES}" "${BZIP2_LIBRARIES}" "${CMAKE_DL_LIBS}" "${DRPC_LIBRARIES}")
+set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} "${ZLIB_LIBRARIES}" "${JPEG_LIBRARIES}" "${BZIP2_LIBRARIES}" "${CMAKE_DL_LIBS}")
 if (HAVE_VULKAN)
 	set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} "zvulkan")
+endif()
+if (NOT NO_DISCORDRPC)
+	set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} "${DRPC_LIBRARIES}")
 endif()
 
 # ZMUSIC
@@ -379,7 +411,11 @@ else()
 	message( SEND_ERROR "Could not find libvpx" )
 endif()
 
-include_directories( "${ZLIB_INCLUDE_DIR}" "${BZIP2_INCLUDE_DIR}" "${LZMA_INCLUDE_DIR}" "${JPEG_INCLUDE_DIR}" "${ZMUSIC_INCLUDE_DIR}" "${DRPC_INCLUDE_DIR}")
+include_directories( "${ZLIB_INCLUDE_DIR}" "${BZIP2_INCLUDE_DIR}" "${LZMA_INCLUDE_DIR}" "${JPEG_INCLUDE_DIR}" "${ZMUSIC_INCLUDE_DIR}" )
+
+if ( NOT NO_DISCORDRPC )
+	include_directories( "${DRPC_INCLUDE_DIR}" )
+endif()
 
 if( ${HAVE_VM_JIT} )
 	add_definitions( -DHAVE_VM_JIT )
@@ -438,6 +474,10 @@ set( PLAT_SDL_SOURCES
 set( PLAT_UNIX_SOURCES
 	common/platform/posix/unix/i_specialpaths.cpp
 	common/platform/posix/unix/gtk_dialogs.cpp )
+set( PLAT_NX_SOURCES
+	common/platform/posix/nx/i_nxsystem.cpp
+	common/platform/posix/nx/st_start.cpp
+	common/platform/posix/nx/i_specialpaths.cpp )
 set( PLAT_OSX_SOURCES
 	common/platform/posix/osx/iwadpicker_cocoa.mm
 	common/platform/posix/osx/i_specialpaths.mm
@@ -473,6 +513,16 @@ elseif( APPLE )
 
 	set_source_files_properties( posix/osx/zdoom.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources )
 	set_source_files_properties( common/platform/posix/osx/iwadpicker_cocoa.mm PROPERTIES COMPILE_FLAGS -fobjc-exceptions )
+elseif( NINTENDO_SWITCH )
+	set( SYSTEM_SOURCES_DIR common/platform/posix common/platform/posix/sdl common/platform/posix/nx )
+	set( SYSTEM_SOURCES ${PLAT_POSIX_SOURCES} ${PLAT_SDL_SOURCES} ${PLAT_NX_SOURCES} )
+	set( OTHER_SYSTEM_SOURCES ${PLAT_WIN32_SOURCES} ${PLAT_OSX_SOURCES} ${PLAT_COCOA_SOURCES} )
+	# use our own replacements for some of the SDL sources
+	list( REMOVE_ITEM SYSTEM_SOURCES
+		common/platform/posix/sdl/st_start.cpp
+		common/platform/posix/sdl/crashcatcher.c )
+	# avoid trying to call realpath or whatever
+	add_definitions( -DPROGDIR="./" )
 else()
 	option (SYSTEMINSTALL "Set global progdir based on CMake Install Dir" OFF)
 
@@ -511,6 +561,10 @@ elseif( HAVE_DISPATCH_APPLY )
 else()
 	option( NO_OPENMP "Disable usage of OpenMP" OFF )
 
+	if( NINTENDO_SWITCH )
+		set( NO_OPENMP ON )
+	endif()
+
 	if( NOT NO_OPENMP )
 		include( FindOpenMP )
 
@@ -536,6 +590,10 @@ add_custom_command( OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/sc_man_scanner.h
 include_directories( ${CMAKE_CURRENT_BINARY_DIR} )
 
 option( SEND_ANON_STATS "Enable sending of anonymous hardware statistics" ON )
+
+if( NINTENDO_SWITCH )
+	set( SEND_ANON_STATS OFF )
+endif()
 
 if( NOT SEND_ANON_STATS )
 	add_definitions( -DNO_SEND_STATS )
@@ -1241,6 +1299,13 @@ if( UNIX )
 	endif()
 endif()
 
+if( NINTENDO_SWITCH )
+	list( REMOVE_ITEM PROJECT_LIBRARIES dl )
+	set( PROJECT_LIBRARIES ${PROJECT_LIBRARIES} EGL glapi drm_nouveau nx )
+	set( ZMUSIC_LIBRARIES ${ZMUSIC_LIBRARIES} fluidsynth mpg123 sndfile vorbisfile vorbisenc vorbis opusfile opus ogg FLAC z )
+	link_directories( ${DEVKITPRO}/portlibs/switch/lib )
+endif()
+
 target_link_libraries( zdoom ${PROJECT_LIBRARIES} gdtoa lzma ${ZMUSIC_LIBRARIES} )
 
 include_directories( .
@@ -1353,6 +1418,13 @@ if( NOT WIN32 AND NOT APPLE )
 			BUILD_WITH_INSTALL_RPATH ON
 		)
 	endif()
+endif()
+
+if( NINTENDO_SWITCH )
+	add_custom_command( TARGET zdoom POST_BUILD
+		COMMAND nacptool --create "${CMAKE_PROJECT_NAME}" "${SWITCH_APP_VERSION}" \"\" "gzdoom.nacp"
+		COMMAND aarch64-none-elf-strip -o ${CMAKE_BINARY_DIR}/gzdoom_stripped.elf ${CMAKE_BINARY_DIR}/gzdoom.elf
+		COMMAND elf2nro ${CMAKE_BINARY_DIR}/gzdoom_stripped.elf ${CMAKE_BINARY_DIR}/gzdoom.nro --icon=${CMAKE_SOURCE_DIR}/nx/gzdoom.jpg --nacp=gzdoom.nacp )
 endif()
 
 add_custom_command(TARGET zdoom POST_BUILD

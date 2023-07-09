@@ -1,8 +1,9 @@
 /*
-** i_module.cpp
+** i_nxsystem.cpp
+** Switch-specific system code.
 **
 **---------------------------------------------------------------------------
-** Copyright 2016 Braden Obrzut
+** Copyright 2023 fgsfds
 ** All rights reserved.
 **
 ** Redistribution and use in source and binary forms, with or without
@@ -31,83 +32,44 @@
 **
 */
 
-#include "i_module.h"
+#include <switch.h>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#elif defined __SWITCH__
-// no libdl
-#define dlopen(x, y) (NULL)
-#define dlsym(x, y) (NULL)
-#define dlclose(x) do { } while(0)
-#else
-#include <dlfcn.h>
+#ifdef _DEBUG
+static int nxlink_sock = -1;
 #endif
 
-
-#ifndef _WIN32
-#define LoadLibraryA(x) dlopen((x), RTLD_LAZY)
-#define GetProcAddress(a,b) dlsym((a),(b))
-#define FreeLibrary(x) dlclose((x))
-using HMODULE = void*;
+extern "C" void userAppInit(void)
+{
+	socketInitializeDefault();
+#ifdef _DEBUG
+	nxlink_sock = nxlinkStdio();
 #endif
-
-bool FModule::Load(std::initializer_list<const char*> libnames)
-{
-	for(auto lib : libnames)
-	{
-		if(!Open(lib))
-			continue;
-
-		StaticProc *proc;
-		for(proc = reqSymbols;proc;proc = proc->Next)
-		{
-			if(!(proc->Call = GetSym(proc->Name)) && !proc->Optional)
-			{
-				Unload();
-				break;
-			}
-		}
-
-		if(IsLoaded())
-			return true;
-	}
-
-	return false;
 }
 
-void FModule::Unload()
+extern "C" void userAppExit(void)
 {
-	if(handle)
-	{
-		FreeLibrary((HMODULE)handle);
-		handle = nullptr;
-	}
-}
-
-bool FModule::Open(const char* lib)
-{
-#ifdef _WIN32
-	if((handle = GetModuleHandleA(lib)) != nullptr)
-		return true;
-#else
-	// Loading an empty string in Linux doesn't do what we expect it to.
-	if(*lib == '\0')
-		return false;
+#ifdef _DEBUG
+	if (nxlink_sock >= 0)
+		close(nxlink_sock);
 #endif
-	handle = LoadLibraryA(lib);
-	return handle != nullptr;
+	socketExit();
 }
 
-void *FModule::GetSym(const char* name)
+bool I_OnScreenKeyboard(const char *hint, char *out, int outlen)
 {
-	return (void *)GetProcAddress((HMODULE)handle, name);
-}
+	if (!out || !outlen) return false;
 
-std::string module_progdir(".");	// current program directory used to look up dynamic libraries. Default to something harmless in case the user didn't set it.
+	SwkbdConfig kbd;
+	Result rc = swkbdCreate(&kbd, 0);
+	if (R_FAILED(rc)) return false;
 
-void FModule_SetProgDir(const char* progdir)
-{
-	module_progdir = progdir;
+	swkbdConfigMakePresetDefault(&kbd);
+	swkbdConfigSetHeaderText(&kbd, hint);
+	swkbdConfigSetGuideText(&kbd, hint);
+	swkbdConfigSetInitialText(&kbd, out);
+
+	rc = swkbdShow(&kbd, out, outlen-1);
+	swkbdClose(&kbd);
+
+	return R_SUCCEEDED(rc);
 }

@@ -67,6 +67,17 @@
 #include "printf.h"
 
 
+#ifdef __SWITCH__
+// no tty stuff, define this here to avoid adding ifdefs everywhere
+#undef isatty
+#define isatty(x) false
+#undef TIOCGWINSZ
+#define TIOCGWINSZ -1
+#undef ioctl
+#define ioctl(x, y, p) do { } while(0);
+struct winsize { int ws_row, ws_col; };
+#endif
+
 #ifndef NO_GTK
 bool I_GtkAvailable ();
 int I_PickIWad_Gtk (WadStuff *wads, int numwads, bool showwin, int defaultiwad, int& autoloadflags);
@@ -85,6 +96,7 @@ void I_SetIWADInfo()
 {
 }
 
+#ifndef __SWITCH__
 extern "C" int I_FileAvailable(const char* filename)
 {
 	FString cmd = "which {0} >/dev/null 2>&1";
@@ -98,6 +110,7 @@ extern "C" int I_FileAvailable(const char* filename)
 
 	return 0;
 }
+#endif
 
 //
 // I_Error
@@ -139,11 +152,23 @@ void Unix_I_FatalError(const char* errortext)
 }
 #endif
 
+#ifdef __SWITCH__
+void Switch_I_FatalError(const char* message)
+{
+	SDL_Quit();
+	FILE *f = fopen("error.log", "w");
+	if (!f) return;
+	fprintf(f, "FATAL ERROR:\n%s\n", message);
+	fclose(f);
+}
+#endif
 
 void I_ShowFatalError(const char *message)
 {
 #ifdef __APPLE__
 	Mac_I_FatalError(message);
+#elif defined __SWITCH__
+	Switch_I_FatalError(message);
 #elif defined __unix__
 	Unix_I_FatalError(message);
 #else
@@ -306,7 +331,7 @@ int I_PickIWad (WadStuff *wads, int numwads, bool showwin, int defaultiwad, int&
 		return defaultiwad;
 	}
 
-#ifndef __APPLE__
+#if !defined __APPLE__ && !defined __SWITCH__
 	if(I_FileAvailable("kdialog"))
 	{
 		FString cmd("kdialog --title \"" GAMENAME " ");
@@ -449,6 +474,7 @@ void I_OpenShellFolder(const char* infolder)
 {
 	char* curdir = getcwd(NULL,0);
 
+#ifndef __SWITCH__
 	if (!chdir(infolder))
 	{
 		Printf("Opening folder: %s\n", infolder);
@@ -456,6 +482,7 @@ void I_OpenShellFolder(const char* infolder)
 		chdir(curdir);
 	}
 	else
+#endif
 	{
 		Printf("Unable to open directory '%s\n", infolder);
 	}

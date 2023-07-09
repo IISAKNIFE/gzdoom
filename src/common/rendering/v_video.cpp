@@ -93,7 +93,13 @@ CUSTOM_CVAR(Int, vid_maxfps, 200, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 	}
 }
 
-CUSTOM_CVAR(Int, vid_preferbackend, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+#ifdef __SWITCH__
+#define DEFAULT_VID_BACKEND 2
+#else
+#define DEFAULT_VID_BACKEND 0
+#endif
+
+CUSTOM_CVAR(Int, vid_preferbackend, DEFAULT_VID_BACKEND, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 {
 	// [SP] This may seem pointless - but I don't want to implement live switching just
 	// yet - I'm pretty sure it's going to require a lot of reinits and destructions to

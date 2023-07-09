@@ -38,11 +38,14 @@
 #include <time.h>
 
 #include "common/engine/printf.h"
-#include "discord_rpc.h"
 #include "version.h"
 
 static int64_t StartTime = 0;
 static bool didInit = false;
+
+#ifndef NO_DISCORDRPC
+
+#include "discord_rpc.h"
 
 static void handleDiscordReady(const DiscordUser* connectedUser)
 {
@@ -83,8 +86,11 @@ static void handleDiscordJoinRequest(const DiscordUser* request)
 		request->userId);
 }
 
+#endif // NO_DISCORDRPC
+
 void I_UpdateDiscordPresence(bool SendPresence, const char* curstatus, const char* appid, const char* steamappid)
 {
+#ifndef NO_DISCORDRPC
 	const char* curappid = DEFAULT_DISCORD_APP_ID;
 
 	if (appid && appid[0] != '\0')
@@ -124,5 +130,6 @@ void I_UpdateDiscordPresence(bool SendPresence, const char* curstatus, const cha
 	{
 		Discord_ClearPresence();
 	}
+#endif // NO_DISCORDRPC
 }
 
