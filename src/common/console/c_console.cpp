@@ -1143,19 +1143,19 @@ static bool C_HandleJoystick (event_t *ev, FCommandBuffer &buffer)
 #ifdef __SWITCH__
 			case KEY_PAD_A:
 			{
-				// Get command string from OSK instead
+				// get command string from OSK instead
 				char cmdbuf[1024];
 				cmdbuf[0] = 0;
-				// Ask for input
+				// ask for input
 				if (!I_OnScreenKeyboard("Enter command", cmdbuf, sizeof(cmdbuf)))
-					return true; // no input
+					return true; // no input, eat the A press
 				buffer.AddString(cmdbuf);
 				HistPos = NULL;
-				// feed fake return
+				// pass through fake return instead of A
 				ev->type = EV_GUI_Event;
 				ev->subtype = EV_GUI_KeyDown;
-				ev->data1 = '\r';
-				return true;
+				ev->data1 = GK_RETURN;
+				break;
 			}
 #endif
 			case KEY_PAD_X:
@@ -1163,19 +1163,19 @@ static bool C_HandleJoystick (event_t *ev, FCommandBuffer &buffer)
 				ev->type = EV_GUI_Event;
 				ev->subtype = EV_GUI_KeyDown;
 				ev->data1 = GK_BACKSPACE;
-				return true;
+				break;
 			case KEY_PAD_DPAD_UP:
 				// feed fake keyboard up
 				ev->type = EV_GUI_Event;
 				ev->subtype = EV_GUI_KeyDown;
 				ev->data1 = GK_UP;
-				return true;
+				break;
 			case KEY_PAD_DPAD_DOWN:
 				// feed fake keyboard down
 				ev->type = EV_GUI_Event;
 				ev->subtype = EV_GUI_KeyDown;
 				ev->data1 = GK_DOWN;
-				return true;
+				break;
 			default:
 				break;
 		}
